@@ -1,18 +1,45 @@
 import express from "express";
 import { ENV } from "./lib/env.js";
 import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+import { existsSync } from "fs";
 import { connectDB } from "./lib/db.js";
 
 const app = express();
 
-const __dirname = path.resolve();
+// Get __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// make for deployement
+// Get project root (try going up from backend/src, fallback to process.cwd())
+const projectRoot = path.resolve(__dirname, "..", "..");
 
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static files in production
 if (ENV.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "frontend", "dist")));
+  // Try multiple possible paths for frontend/dist
+  const possiblePaths = [
+    path.join(projectRoot, "frontend", "dist"),
+    path.join(process.cwd(), "frontend", "dist"),
+    path.join(__dirname, "..", "..", "frontend", "dist"),
+  ];
+
+  const frontendDist =
+    possiblePaths.find((p) => existsSync(p)) || possiblePaths[0];
+
+  app.use(express.static(frontendDist));
+
+  // Catch-all: serve index.html for SPA routing
   app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
+    res.sendFile(path.join(frontendDist, "index.html"), (err) => {
+      if (err) {
+        res.status(404).json({ error: "File not found" });
+      }
+    });
   });
 }
 
